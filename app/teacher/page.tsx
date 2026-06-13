@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { 
   BookOpen, FileText, Camera, HelpCircle, 
   Sparkles, History, Settings, CheckCircle2, AlertCircle,
-  Key, ExternalLink, X, BookOpenCheck, RefreshCw, Eye, EyeOff
+  Key, ExternalLink, X, BookOpenCheck, RefreshCw, Eye, EyeOff,
+  ArrowLeft
 } from 'lucide-react';
 
 interface RecentQuiz {
@@ -265,11 +266,20 @@ export default function TeacherPage() {
 
       {/* Header */}
       <header className="flex justify-between items-center pb-6 border-b border-slate-200 mb-8">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            Class<span className="text-blue-600">Pulse</span> Dashboard
-          </h1>
-          <p className="text-slate-500 text-sm">Create instant, insight-driven quizzes for today's lecture</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push('/')}
+            className="p-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer transition-all flex items-center justify-center shrink-0 shadow-sm"
+            title="Back to Landing Page"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              Class<span className="text-blue-600">Pulse</span> Dashboard
+            </h1>
+            <p className="text-slate-500 text-sm">Create instant, insight-driven quizzes for today's lecture</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button

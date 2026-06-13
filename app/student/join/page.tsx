@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ArrowRight, GraduationCap, AlertCircle } from 'lucide-react';
+import { Sparkles, ArrowRight, GraduationCap, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function StudentJoinPage() {
   const router = useRouter();
@@ -80,7 +80,14 @@ export default function StudentJoinPage() {
         </div>
 
         {/* Form Card */}
-        <div className="student-card bg-white p-6 md:p-8">
+        <div className="student-card bg-white p-6 md:p-8 relative">
+          <button
+            onClick={() => router.push('/')}
+            className="absolute -top-12 left-0 inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm"
+          >
+            <ArrowLeft size={12} />
+            <span>Back</span>
+          </button>
           {error && (
             <div className="p-3 bg-rose-50 border-2 border-rose-200 text-rose-800 rounded-xl flex items-center gap-2.5 text-xs font-semibold mb-6">
               <AlertCircle size={16} className="text-rose-600 shrink-0" />
