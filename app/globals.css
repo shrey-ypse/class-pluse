@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fcfcfd;
+  --foreground: #1e293b;
+  --classroom-blue: #1a73e8;
+  --classroom-blue-hover: #1557b0;
+  --classroom-bg: #f8f9fa;
+  --card-border: #dadce0;
+}
+
+body {
+  background-color: var(--classroom-bg);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* Glassmorphism/Shadow Utilities for the project */
+.classroom-card {
+  background: #ffffff;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+}
+
+.student-card {
+  background: #ffffff;
+  border: 3px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 0 0 #e2e8f0;
+  transition: all 0.1s ease;
+}
+
+.student-card:active {
+  transform: translateY(4px);
+  box-shadow: 0 0px 0 0 #e2e8f0;
+}
+
+.student-card-selected {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 0 0 #2563eb;
+  background-color: #eff6ff;
+}
+
+.student-card-selected:active {
+  transform: translateY(4px);
+  box-shadow: 0 0px 0 0 #2563eb;
+}
+
+.student-button {
+  border: 2px solid #2563eb;
+  border-bottom-width: 6px;
+  border-radius: 12px;
+  transition: all 0.1s ease;
+}
+
+.student-button:active {
+  transform: translateY(4px);
+  border-bottom-width: 2px;
+}
+
+/* Animate Pulse for joining */
+@keyframes softPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-soft-pulse {
+  animation: softPulse 2s infinite ease-in-out;
+}
