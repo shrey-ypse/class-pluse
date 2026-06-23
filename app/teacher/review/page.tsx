@@ -183,13 +183,22 @@ function ReviewContent() {
     <div className="flex-1 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full">
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-200 mb-8 gap-4">
-        <div>
-          <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            Verify Generated Quiz
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Course: <strong className="text-slate-800 font-bold">{subject}</strong> • Topic: <span className="italic">"{topic}"</span>
-          </p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push('/teacher')}
+            className="p-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer transition-all flex items-center justify-center shrink-0 shadow-sm"
+            title="Back to Teacher Setup"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              Verify Generated Quiz
+            </h1>
+            <p className="text-slate-500 text-sm mt-0.5">
+              Course: <strong className="text-slate-800 font-bold">{subject}</strong> • Topic: <span className="italic">"{topic}"</span>
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button

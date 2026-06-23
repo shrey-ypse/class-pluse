@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Check, X, Smile, AlertCircle, 
-  HelpCircle, Send, CheckCircle2, Award, Lock
+  HelpCircle, Send, CheckCircle2, Award, Lock, ArrowLeft
 } from 'lucide-react';
 import { Question } from '@/lib/types';
 
@@ -201,12 +201,23 @@ export default function StudentQuizPage({ params }: { params: Promise<{ code: st
     <div className="flex-1 flex flex-col p-4 max-w-md mx-auto w-full justify-between min-h-screen bg-slate-50">
       
       {/* Top Header Card */}
-      <header className="flex justify-between items-center p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm mb-4 shrink-0">
-        <div>
+      <header className="flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm mb-4 shrink-0">
+        <button
+          onClick={() => {
+            if (confirm('Are you sure you want to leave this quiz session? You can re-join later using the same roll number.')) {
+              router.push('/student/join');
+            }
+          }}
+          className="p-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer transition-all flex items-center justify-center shrink-0 shadow-sm"
+          title="Leave Room"
+        >
+          <ArrowLeft size={14} />
+        </button>
+        <div className="flex-grow">
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Joined Room</span>
           <span className="text-sm font-bold text-slate-800">Student #{rollNumber} ({studentName})</span>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="text-xs bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-black border border-slate-300">
             Code: {code}
           </span>

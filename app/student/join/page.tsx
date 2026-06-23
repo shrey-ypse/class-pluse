@@ -1,24 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Sparkles, ArrowRight, GraduationCap, AlertCircle, ArrowLeft } from 'lucide-react';
 
-export default function StudentJoinPage() {
+function StudentJoinForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Hydrate roll number & name from memory to help quick reconnects
+  // Hydrate roll number, name from memory & pre-fill code if present in URL
   useEffect(() => {
+    const urlCode = searchParams.get('code');
+    if (urlCode) {
+      setCode(urlCode.replace(/\D/g, '').slice(0, 4));
+    }
     const savedRoll = localStorage.getItem('classpulse_student_roll');
     const savedName = localStorage.getItem('classpulse_student_name');
     if (savedRoll) setRollNumber(savedRoll);
     if (savedName) setName(savedName);
-  }, []);
+  }, [searchParams]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,3 +174,20 @@ export default function StudentJoinPage() {
     </div>
   );
 }
+
+export default function StudentJoinPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 flex flex-col justify-center items-center p-6 bg-slate-50 text-center">
+        <svg className="animate-spin h-10 w-10 text-blue-600 mb-4" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        <span className="text-sm font-semibold text-slate-600">Loading classroom connection...</span>
+      </div>
+    }>
+      <StudentJoinForm />
+    </Suspense>
+  );
+}
+

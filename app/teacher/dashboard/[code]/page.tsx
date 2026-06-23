@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   Users, BarChart2, Play, Award, 
   HelpCircle, Download, CheckCircle, ArrowRight, Home, ShieldAlert,
-  Clock, Lock, Unlock, Eye, EyeOff, LayoutGrid, Monitor
+  Clock, Lock, Unlock, Eye, EyeOff, LayoutGrid, Monitor, ArrowLeft
 } from 'lucide-react';
 import { Question } from '@/lib/types';
 
@@ -302,6 +302,13 @@ export default function TeacherDashboard({ params }: { params: Promise<{ code: s
     return themeMode === 'projector' ? `Student #${s.rollNumber}` : (showRealNames ? s.name : `Student #${s.rollNumber}`);
   };
 
+  const getShareLink = () => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/student/join?code=${code}`;
+    }
+    return '';
+  };
+
   return (
     <div className={`flex-grow min-h-screen flex flex-col p-4 md:p-8 transition-colors duration-300 ${
       themeMode === 'console' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
@@ -311,9 +318,27 @@ export default function TeacherDashboard({ params }: { params: Promise<{ code: s
       <header className={`flex flex-col md:flex-row md:justify-between md:items-center border-b pb-4 mb-6 gap-4 ${
         themeMode === 'console' ? 'border-slate-800' : 'border-slate-200'
       }`}>
-        <div>
-          <span className="text-xs font-bold text-blue-500 uppercase tracking-widest">{subject}</span>
-          <h1 className="text-2xl font-black tracking-tight">{topic}</h1>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (status === 'active' && !confirm('Are you sure you want to leave the active quiz? Students will no longer be able to submit answers.')) {
+                return;
+              }
+              router.push('/teacher');
+            }}
+            className={`p-2 border rounded-xl cursor-pointer transition-all flex items-center justify-center shrink-0 shadow-sm ${
+              themeMode === 'console' 
+                ? 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200' 
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+            title="Exit Session"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <span className="text-xs font-bold text-blue-500 uppercase tracking-widest">{subject}</span>
+            <h1 className="text-2xl font-black tracking-tight">{topic}</h1>
+          </div>
         </div>
         
         {/* Header Control Widgets */}
@@ -373,6 +398,42 @@ export default function TeacherDashboard({ params }: { params: Promise<{ code: s
             <p className="text-base font-semibold">
               Open <strong className="text-blue-600">/student/join</strong> on your phone and enter this room code.
             </p>
+
+            {/* Share via WhatsApp / Copy Link */}
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => {
+                  const shareLink = getShareLink();
+                  const message = `Join the live ClassPulse quiz! Room Code: *${code}*. Click the link to join: ${shareLink}`;
+                  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                  window.open(whatsappUrl, '_blank');
+                }}
+                className={`inline-flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                  themeMode === 'console' 
+                    ? 'bg-emerald-950/40 border-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                }`}
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.713-1.458L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.97C16.59 1.966 14.122 1.96 12.009 1.96 6.574 1.96 2.15 6.332 2.146 11.76c-.001 1.636.452 3.232 1.312 4.637l-.986 3.602 3.675-.953zm11.233-7.58c-.287-.143-1.696-.826-1.958-.921-.262-.095-.453-.143-.642.143-.19.287-.736.921-.903 1.112-.167.19-.334.215-.62.072-.287-.143-1.21-.443-2.305-1.408-.853-.75-1.428-1.677-1.595-1.964-.167-.287-.018-.442.125-.584.13-.127.287-.333.43-.5.143-.167.19-.286.286-.476.096-.19.048-.357-.024-.5-.071-.143-.642-1.524-.88-2.096-.232-.556-.466-.48-.642-.489-.166-.008-.357-.01-.548-.01-.19 0-.5.072-.762.357-.262.287-1 .977-1 2.38 0 1.405 1.047 2.762 1.19 2.953.143.19 2.062 3.11 4.996 4.35.698.295 1.242.472 1.666.604.702.22 1.341.19 1.847.116.564-.083 1.696-.683 1.936-1.343.24-.66.24-1.225.167-1.343-.072-.119-.262-.19-.548-.333z" />
+                </svg>
+                <span>Share via WhatsApp</span>
+              </button>
+              <button
+                onClick={() => {
+                  const shareLink = getShareLink();
+                  navigator.clipboard.writeText(shareLink);
+                  alert('Join link copied to clipboard!');
+                }}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                  themeMode === 'console' 
+                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>Copy Student Link</span>
+              </button>
+            </div>
           </div>
 
           <div className={`w-full border rounded-2xl p-6 shadow ${

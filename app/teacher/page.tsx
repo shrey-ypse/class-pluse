@@ -40,6 +40,13 @@ export default function TeacherPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showKeyBanner, setShowKeyBanner] = useState(true);
 
+  // Google API & Picker States
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleApiKey, setGoogleApiKey] = useState('');
+  const [googleAccessToken, setGoogleAccessToken] = useState('');
+  const [hasGoogleSet, setHasGoogleSet] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'gemini' | 'google'>('gemini');
+
   // Active Session Recovery
   const [activeSessionCode, setActiveSessionCode] = useState('');
   const [activeSessionDetails, setActiveSessionDetails] = useState<RecentQuiz | null>(null);
@@ -76,6 +83,44 @@ export default function TeacherPage() {
     if (savedKey) {
       setGeminiKey(savedKey);
       setHasKeySet(true);
+    }
+
+    // Check for Google credentials
+    const savedGoogleClientId = localStorage.getItem('classpulse_google_client_id');
+    const savedGoogleApiKey = localStorage.getItem('classpulse_google_api_key');
+    if (savedGoogleClientId) setGoogleClientId(savedGoogleClientId);
+    if (savedGoogleApiKey) setGoogleApiKey(savedGoogleApiKey);
+    if (savedGoogleClientId && savedGoogleApiKey) {
+      setHasGoogleSet(true);
+    }
+
+    // Dynamically load PDF.js client-side if not loaded
+    if (typeof window !== 'undefined' && !(window as any).pdfjsLib) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.onload = () => {
+        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      };
+      document.head.appendChild(script);
+    }
+
+    // Dynamically load Google Identity Services (GIS) for OAuth2
+    if (typeof window !== 'undefined' && !(window as any).google?.accounts?.oauth2) {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+
+    // Dynamically load Google API Client (GAPI) for Picker
+    if (typeof window !== 'undefined' && !(window as any).gapi) {
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.onload = () => {
+        (window as any).gapi.load('picker', () => {});
+      };
+      document.head.appendChild(script);
     }
 
     // Check for active session
@@ -132,21 +177,228 @@ export default function TeacherPage() {
         reader.readAsDataURL(file);
       } else {
         setNotesFile(file);
-        const reader = new FileReader();
-        reader.onload = () => {
-          const text = reader.result as string;
-          setNotesTextContent(text.slice(0, 20000)); // limit safety
-          setTimeout(() => {
-            setIsScanning(false);
-            setUploadStatus(`Document parsed successfully! (${file.name})`);
-            setTopic(prev => {
-              const added = `[Notes File contents extracted: BCNF requirements, Transitive dependency rules, and 3NF examples.]`;
-              return prev ? `${prev}\n\n${added}` : added;
-            });
-          }, 1600);
-        };
-        reader.readAsText(file);
+        
+        if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+          // Parse PDF client-side
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const arrayBuffer = reader.result as ArrayBuffer;
+              const text = await extractTextFromPdfData(arrayBuffer);
+              setNotesTextContent(text);
+              setTimeout(() => {
+                setIsScanning(false);
+                setUploadStatus(`PDF document parsed successfully! (${file.name})`);
+                setTopic(prev => {
+                  const snippet = text.slice(0, 300) + (text.length > 300 ? '...' : '');
+                  const added = `[Local PDF Content: ${snippet}]`;
+                  return prev ? `${prev}\n\n${added}` : added;
+                });
+              }, 1600);
+            } catch (err: any) {
+              console.error('PDF parsing error:', err);
+              setIsScanning(false);
+              setUploadStatus(`Error parsing PDF: ${err.message || err}`);
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          // Standard text file
+          const reader = new FileReader();
+          reader.onload = () => {
+            const text = reader.result as string;
+            setNotesTextContent(text.slice(0, 20000)); // limit safety
+            setTimeout(() => {
+              setIsScanning(false);
+              setUploadStatus(`Document parsed successfully! (${file.name})`);
+              setTopic(prev => {
+                const snippet = text.slice(0, 300) + (text.length > 300 ? '...' : '');
+                const added = `[Local Notes Content: ${snippet}]`;
+                return prev ? `${prev}\n\n${added}` : added;
+              });
+            }, 1600);
+          };
+          reader.readAsText(file);
+        }
       }
+    }
+  };
+
+  // Helper to extract text from PDF arraybuffer using client-side PDF.js
+  const extractTextFromPdfData = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+    const pdfjsLib = (window as any).pdfjsLib;
+    if (!pdfjsLib) throw new Error('PDF.js library is not loaded.');
+
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    const numPages = Math.min(pdf.numPages, 10); // limit to 10 pages for safety
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
+    }
+    return fullText;
+  };
+
+  // Google OAuth2 and Picker Trigger
+  const handleGoogleDriveImport = () => {
+    if (!googleClientId || !googleApiKey) {
+      setActiveSettingsTab('google');
+      setIsSettingsOpen(true);
+      setError('Please configure your Google Drive Client ID and Developer API Key in settings first.');
+      return;
+    }
+
+    setError('');
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) {
+      alert('Google identity services script is still loading. Please try again.');
+      return;
+    }
+
+    try {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            console.error('Google OAuth error:', tokenResponse);
+            return;
+          }
+          const accessToken = tokenResponse.access_token;
+          setGoogleAccessToken(accessToken);
+          showGooglePicker(accessToken);
+        },
+      });
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (err) {
+      console.error('Error requesting Google Access Token:', err);
+      alert('OAuth initialization failed. Check your Google Client ID.');
+    }
+  };
+
+  const showGooglePicker = (accessToken: string) => {
+    const gapi = (window as any).gapi;
+    const google = (window as any).google;
+    if (!gapi || !google?.picker) {
+      alert('Google Picker script is still loading. Please try again.');
+      return;
+    }
+
+    try {
+      const docsView = new google.picker.DocsView(google.picker.ViewId.DOCS)
+        .setMimeTypes('application/pdf,text/plain,application/vnd.google-apps.document,application/vnd.google-apps.presentation')
+        .setSelectFolderEnabled(false);
+
+      const picker = new google.picker.PickerBuilder()
+        .addView(docsView)
+        .setOAuthToken(accessToken)
+        .setDeveloperKey(googleApiKey)
+        .setCallback(async (data: any) => {
+          if (data.action === google.picker.Action.PICKED) {
+            const file = data.docs[0];
+            await handleGoogleFileSelected(file, accessToken);
+          }
+        })
+        .build();
+      picker.setVisible(true);
+    } catch (err) {
+      console.error('Error showing Picker:', err);
+      alert('Failed to launch Google Picker. Check your API Key.');
+    }
+  };
+
+  const handleGoogleFileSelected = async (file: any, accessToken: string) => {
+    const fileId = file.id;
+    const fileName = file.name;
+    const mimeType = file.mimeType;
+
+    setUploadStatus(`Retrieving "${fileName}" from Google Drive...`);
+    setIsScanning(true);
+    setScanProgress(0);
+
+    // Simulated scanning progress
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 10;
+      setScanProgress(progress);
+      if (progress >= 100) {
+        clearInterval(interval);
+      }
+    }, 150);
+
+    try {
+      let textContent = '';
+      const isGoogleDoc = mimeType === 'application/vnd.google-apps.document';
+      const isGoogleSlide = mimeType === 'application/vnd.google-apps.presentation';
+
+      if (isGoogleDoc || isGoogleSlide) {
+        // Export native Google file to plain text
+        const exportUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`;
+        const res = await fetch(exportUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+        textContent = await res.text();
+      } else {
+        // Fetch raw binary/media for standard files
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+        const res = await fetch(downloadUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
+
+        if (mimeType === 'application/pdf') {
+          const arrayBuffer = await res.arrayBuffer();
+          textContent = await extractTextFromPdfData(arrayBuffer);
+        } else {
+          textContent = await res.text();
+        }
+      }
+
+      const cleanText = textContent.trim();
+      setNotesTextContent(cleanText);
+
+      // Pre-populate topic textbox
+      const snippet = cleanText.slice(0, 300) + (cleanText.length > 300 ? '...' : '');
+      setTimeout(() => {
+        setIsScanning(false);
+        setUploadStatus(`Successfully imported from Google Drive! (${fileName})`);
+        setTopic(prev => {
+          const added = `[Google Drive Notes: "${fileName}" - ${snippet}]`;
+          return prev ? `${prev}\n\n${added}` : added;
+        });
+      }, 1600);
+
+    } catch (err: any) {
+      console.error('Error fetching file content from Google Drive:', err);
+      setIsScanning(false);
+      setUploadStatus(`Error importing from Google Drive: ${err.message || err}`);
+    }
+  };
+
+  const saveGoogleCredentials = (clientId: string, apiKey: string) => {
+    const trimmedClientId = clientId.trim();
+    const trimmedApiKey = apiKey.trim();
+
+    if (trimmedClientId && trimmedApiKey) {
+      localStorage.setItem('classpulse_google_client_id', trimmedClientId);
+      localStorage.setItem('classpulse_google_api_key', trimmedApiKey);
+      setGoogleClientId(trimmedClientId);
+      setGoogleApiKey(trimmedApiKey);
+      setHasGoogleSet(true);
+      setIsSettingsOpen(false);
+    } else {
+      localStorage.removeItem('classpulse_google_client_id');
+      localStorage.removeItem('classpulse_google_api_key');
+      setGoogleClientId('');
+      setGoogleApiKey('');
+      setHasGoogleSet(false);
     }
   };
 
@@ -518,7 +770,7 @@ export default function TeacherPage() {
                   {inputMode === 'notes' && (
                     <div className="space-y-4">
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Upload supporting reference materials
+                        Add supporting reference materials
                       </label>
                       
                       {isScanning ? (
@@ -530,16 +782,32 @@ export default function TeacherPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg p-6 bg-white cursor-pointer hover:border-blue-400 hover:bg-slate-50/50 transition-colors relative">
-                          <input
-                            type="file"
-                            accept=".pdf,.txt,.doc,.docx,.ppt,.pptx"
-                            onChange={(e) => handleFileChange(e, 'notes')}
-                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                          />
-                          <FileText size={32} className="text-slate-400 mb-2" />
-                          <span className="text-xs font-bold text-slate-600">Select lecture slides or notes</span>
-                          <span className="text-[10px] text-slate-400 mt-1">Supports PDF, TXT, PPTX</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Local File Uploader */}
+                          <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-5 bg-white cursor-pointer hover:border-blue-400 hover:bg-slate-50/50 transition-colors relative min-h-[140px] text-center">
+                            <input
+                              type="file"
+                              accept=".pdf,.txt"
+                              onChange={(e) => handleFileChange(e, 'notes')}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            />
+                            <FileText size={28} className="text-slate-400 mb-2" />
+                            <span className="text-xs font-bold text-slate-600">Select local notes file</span>
+                            <span className="text-[9px] text-slate-400 mt-1">Supports PDF, TXT</span>
+                          </div>
+
+                          {/* Google Drive Picker */}
+                          <button
+                            type="button"
+                            onClick={handleGoogleDriveImport}
+                            className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-5 bg-white hover:border-blue-400 hover:bg-slate-50/50 transition-colors min-h-[140px] cursor-pointer text-center"
+                          >
+                            <svg className="w-8 h-8 mb-2 text-slate-500 hover:text-blue-600 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z" />
+                            </svg>
+                            <span className="text-xs font-bold text-slate-600">Import from Google Drive</span>
+                            <span className="text-[9px] text-slate-400 mt-1">PDF, TXT, Google Docs & Slides</span>
+                          </button>
                         </div>
                       )}
                       {uploadStatus && !isScanning && (
@@ -675,9 +943,7 @@ export default function TeacherPage() {
             </ul>
           </div>
         </div>
-      </div>
-
-      {/* Settings Dialog (Gemini key setup & instructional guide) */}
+      </div>      {/* Settings Dialog (Gemini key & Google credentials setup) */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl p-6 relative animate-scale-up space-y-6">
@@ -690,79 +956,176 @@ export default function TeacherPage() {
               <X size={18} />
             </button>
 
-            {/* Title */}
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Key className="text-blue-600" size={20} />
-                Gemini API Configuration
-              </h3>
-              <p className="text-xs text-slate-500">Enable advanced multimodal AI parsing and custom quiz generation.</p>
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 text-xs font-bold gap-4">
+              <button
+                type="button"
+                onClick={() => setActiveSettingsTab('gemini')}
+                className={`pb-3 text-center transition-all border-b-2 cursor-pointer ${
+                  activeSettingsTab === 'gemini'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Gemini API Key
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSettingsTab('google')}
+                className={`pb-3 text-center transition-all border-b-2 cursor-pointer ${
+                  activeSettingsTab === 'google'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Google Drive Config
+              </button>
             </div>
 
-            {/* Instruction Banner - How to get key */}
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-              <span className="block text-[9px] font-black text-blue-600 uppercase tracking-widest">How to get a free API Key:</span>
-              <ol className="text-xs text-slate-600 space-y-2 list-decimal list-inside font-medium leading-relaxed">
-                <li>
-                  Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold inline-flex items-center gap-0.5">Google AI Studio <ExternalLink size={10} /></a>.
-                </li>
-                <li>
-                  Sign in with your Google account (totally free).
-                </li>
-                <li>
-                  Click the blue <strong className="text-slate-800">"Create API Key"</strong> button at the top-left.
-                </li>
-                <li>
-                  Select your project and click <strong className="text-slate-800">"Create API Key in new project"</strong>.
-                </li>
-                <li>
-                  Copy the generated key (starts with <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px]">AIzaSy...</code>) and paste it below.
-                </li>
-              </ol>
-            </div>
+            {activeSettingsTab === 'gemini' ? (
+              <div className="space-y-6">
+                {/* Title */}
+                <div className="space-y-1">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <Key className="text-blue-600" size={18} />
+                    Gemini API Configuration
+                  </h3>
+                  <p className="text-xs text-slate-500">Enable advanced multimodal AI parsing and custom quiz generation.</p>
+                </div>
 
-            {/* Input Form */}
-            <div className="space-y-3">
-              <label htmlFor="apiKeyInput" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Paste Gemini API Key Here
-              </label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  id="apiKeyInput"
-                  placeholder="AIzaSy..."
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
-                  className="w-full pl-3.5 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                {/* Instruction Banner - How to get key */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                  <span className="block text-[9px] font-black text-blue-600 uppercase tracking-widest">How to get a free API Key:</span>
+                  <ol className="text-[11px] text-slate-600 space-y-2 list-decimal list-inside font-medium leading-relaxed">
+                    <li>
+                      Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold inline-flex items-center gap-0.5">Google AI Studio <ExternalLink size={10} /></a>.
+                    </li>
+                    <li>Sign in with your Google account (totally free).</li>
+                    <li>Click the blue <strong className="text-slate-800">"Create API Key"</strong> button at the top-left.</li>
+                    <li>Copy the generated key (starts with <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px]">AIzaSy...</code>) and paste it below.</li>
+                  </ol>
+                </div>
+
+                {/* Input Form */}
+                <div className="space-y-3">
+                  <label htmlFor="apiKeyInput" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Paste Gemini API Key Here
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      id="apiKeyInput"
+                      placeholder="AIzaSy..."
+                      value={geminiKey}
+                      onChange={(e) => setGeminiKey(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => saveGeminiKey(geminiKey)}
+                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow transition-all"
+                  >
+                    Save Key
+                  </button>
+                  <button
+                    onClick={() => {
+                      saveGeminiKey('');
+                      setIsSettingsOpen(false);
+                    }}
+                    className="px-4 py-3 border border-slate-300 hover:bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Title */}
+                <div className="space-y-1">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z" />
+                    </svg>
+                    Google Drive Integration
+                  </h3>
+                  <p className="text-xs text-slate-500">Enable importing notes directly from your Google Drive files.</p>
+                </div>
 
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => saveGeminiKey(geminiKey)}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow transition-all"
-              >
-                Save Configuration
-              </button>
-              <button
-                onClick={() => {
-                  saveGeminiKey('');
-                  setIsSettingsOpen(false);
-                }}
-                className="px-4 py-3 border border-slate-300 hover:bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all"
-              >
-                Clear
-              </button>
-            </div>
+                {/* Instruction Banner - How to setup Google Drive */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl max-h-[160px] overflow-y-auto space-y-3">
+                  <span className="block text-[9px] font-black text-blue-600 uppercase tracking-widest">How to configure Google Cloud:</span>
+                  <ol className="text-[11px] text-slate-600 space-y-2 list-decimal list-inside font-medium leading-relaxed">
+                    <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold inline-flex items-center gap-0.5">Google Cloud Console <ExternalLink size={10} /></a>.</li>
+                    <li>Enable the <strong>Google Drive API</strong> & <strong>Google Picker API</strong>.</li>
+                    <li>Configure your <strong>OAuth Consent Screen</strong> and publish it.</li>
+                    <li>Create an <strong>OAuth Client ID</strong> (select "Web Application").</li>
+                    <li>Add your domains (e.g., <code>http://localhost:3000</code>) to <strong>Authorized JavaScript origins</strong>.</li>
+                    <li>Create an <strong>API Key</strong> (restricting it to the Picker API is recommended).</li>
+                  </ol>
+                </div>
+
+                {/* Input Fields */}
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="clientIdInput" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      OAuth Client ID
+                    </label>
+                    <input
+                      type="text"
+                      id="clientIdInput"
+                      placeholder="e.g. 12345678-abc.apps.googleusercontent.com"
+                      value={googleClientId}
+                      onChange={(e) => setGoogleClientId(e.target.value)}
+                      className="w-full px-3.5 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="googleApiKeyInput" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Developer API Key
+                    </label>
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      id="googleApiKeyInput"
+                      placeholder="e.g. AIzaSy..."
+                      value={googleApiKey}
+                      onChange={(e) => setGoogleApiKey(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => saveGoogleCredentials(googleClientId, googleApiKey)}
+                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow transition-all"
+                  >
+                    Save Settings
+                  </button>
+                  <button
+                    onClick={() => {
+                      saveGoogleCredentials('', '');
+                      setIsSettingsOpen(false);
+                    }}
+                    className="px-4 py-3 border border-slate-300 hover:bg-bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
         </div>
